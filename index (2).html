@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Foncier — suivi parcellaire</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --paper:#f2f3f0; --panel:#ffffff; --ink:#16191a; --muted:#6b7270;
+  --rule:#d8dbd6; --rule-soft:#e8eae6; --accent:#1f5f4f; --accent-soft:#e4efe9;
+  --danger:#a3302a; --warn:#9a6b12;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --h-top:46px; --h-bot:44px; --w-left:250px; --w-right:290px;
+}
+@media (prefers-color-scheme:dark){
+  :root{--paper:#15181a;--panel:#1c2022;--ink:#e6e9e6;--muted:#9aa19d;--rule:#31373a;--rule-soft:#262b2d;--accent:#63b598;--accent-soft:#1d3a33;}
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:var(--sans);font-size:13px;color:var(--ink);background:var(--paper);overflow:hidden;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font-family:inherit;font-size:13px;color:inherit}
+button{background:transparent;border:1px solid var(--rule);border-radius:5px;padding:5px 9px;cursor:pointer}
+button:hover{background:var(--rule-soft)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{filter:brightness(1.1)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input,select,textarea{background:var(--panel);border:1px solid var(--rule);border-radius:5px;padding:5px 7px;width:100%}
+label{display:block;font-size:11px;color:var(--muted);margin:7px 0 2px}
+.mono{font-family:var(--mono)}
+.row{display:flex;gap:6px;align-items:center}
+.grow{flex:1;min-width:0}
+.hide{display:none !important}
+
+#top{height:var(--h-top);display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--rule)}
+#top .brand{font-weight:600;letter-spacing:.02em;white-space:nowrap}
+#top .brand small{font-weight:400;color:var(--muted);margin-left:6px;font-size:11px}
+#q{max-width:230px}
+#syncState{font-size:11px;color:var(--muted);white-space:nowrap}
+
+#main{position:absolute;top:var(--h-top);bottom:var(--h-bot);left:0;right:0;display:flex}
+aside{background:var(--panel);display:flex;flex-direction:column;min-height:0}
+#left{width:var(--w-left);border-right:1px solid var(--rule)}
+#right{width:var(--w-right);border-left:1px solid var(--rule);overflow-y:auto;padding:10px}
+#map{flex:1;min-width:0;background:var(--paper)}
+
+.tabs{display:flex;border-bottom:1px solid var(--rule)}
+.tabs button{flex:1;border:0;border-radius:0;border-bottom:2px solid transparent;padding:8px 0;font-size:12px;color:var(--muted)}
+.tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+.toolbar{display:flex;gap:5px;padding:6px;border-bottom:1px solid var(--rule-soft);align-items:center}
+.toolbar select{padding:3px 5px;font-size:11px}
+.list{flex:1;overflow-y:auto}
+.item{display:flex;gap:7px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--rule-soft);cursor:pointer}
+.item:hover{background:var(--rule-soft)}
+.item.on{background:var(--accent-soft)}
+.item .sw{width:9px;height:9px;border-radius:2px;flex:none}
+.item .id{font-family:var(--mono);font-size:12px}
+.item .sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ar{font-size:11px;color:var(--muted);white-space:nowrap}
+.item input[type=checkbox]{width:auto;margin:0}
+
+#bot{position:absolute;bottom:0;left:0;right:0;height:var(--h-bot);display:flex;align-items:center;background:var(--panel);border-top:1px solid var(--rule);padding:0 10px;gap:16px;overflow-x:auto}
+.stat b{display:block;font-size:15px;font-weight:600;line-height:1.2}
+.stat span{font-size:10px;color:var(--muted)}
+
+.pill{display:inline-flex;align-items:center;gap:4px;border-radius:4px;padding:2px 7px;font-size:11px}
+.kv{width:100%;border-collapse:collapse}
+.kv td{padding:3px 0;vertical-align:top}
+.kv td:first-child{color:var(--muted);width:44%}
+.kv td:last-child{text-align:right}
+.warnflag{color:var(--warn);font-size:11px}
+h3{font-size:13px;margin:0 0 6px;font-weight:600}
+.sect{border-top:1px solid var(--rule-soft);margin-top:10px;padding-top:8px}
+
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:2000}
+.modal{background:var(--panel);border-radius:8px;max-width:900px;width:100%;max-height:90vh;display:flex;flex-direction:column}
+.modal header{padding:11px 14px;border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:8px}
+.modal header h2{margin:0;font-size:14px;flex:1}
+.modal .body{padding:14px;overflow:auto}
+.modal footer{padding:10px 14px;border-top:1px solid var(--rule);display:flex;gap:8px;justify-content:flex-end;align-items:center}
+table.grid{width:100%;border-collapse:collapse;font-size:12px}
+table.grid th{text-align:left;font-weight:500;color:var(--muted);font-size:11px;border-bottom:1px solid var(--rule);padding:4px}
+table.grid td{border-bottom:1px solid var(--rule-soft);padding:2px 4px}
+table.grid input,table.grid select{padding:2px 4px;font-size:12px;border-color:transparent;background:transparent}
+table.grid input:hover,table.grid select:hover{border-color:var(--rule)}
+table.grid input.mono{font-family:var(--mono)}
+.note{font-size:12px;color:var(--muted);line-height:1.5}
+.bad{color:var(--danger)}
+.ok{color:var(--accent)}
+.leaflet-container{background:var(--paper);font-family:var(--sans)}
+.plabel{font-family:var(--mono);font-size:10px;color:#fff;text-shadow:0 0 2px #000,0 0 3px #000;white-space:nowrap}
+.legend{background:var(--panel);border:1px solid var(--rule);border-radius:5px;padding:5px 7px;font-size:11px;line-height:1.7}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+#drawer{display:none}
+@media (max-width:860px){
+  :root{--w-left:0px;--w-right:0px}
+  #left,#right{position:absolute;top:0;bottom:0;z-index:1200;width:82%;max-width:330px;box-shadow:0 0 22px rgba(0,0,0,.3)}
+  #left{left:0;transform:translateX(-102%);transition:transform .18s}
+  #right{right:0;transform:translateX(102%);transition:transform .18s}
+  #left.open,#right.open{transform:none}
+  #drawer{display:inline-flex}
+  #q{max-width:none}
+}
+</style>
+</head>
+<body>
+
+<div id="top">
+  <button id="drawer" title="Liste">☰</button>
+  <div class="brand">Foncier<small id="expName"></small></div>
+  <input id="q" placeholder="Rechercher : A 145, Peyrères, Dupont…" autocomplete="off">
+  <span class="grow"></span>
+  <span id="syncState">local</span>
+  <button id="btnImport">Importer</button>
+  <button id="btnExport">Exporter</button>
+  <button id="btnParams">Paramètres</button>
+</div>
+
+<div id="main">
+  <aside id="left">
+    <div class="tabs">
+      <button data-tab="parcelles" class="on">Parcelles</button>
+      <button data-tab="baux">Baux</button>
+    </div>
+    <div class="toolbar" id="tbParcelles">
+      <select id="fCommune"><option value="">Toutes communes</option></select>
+      <select id="fStatut"><option value="">Tout statut</option></select>
+      <button id="btnSel" title="Sélection multiple">☑</button>
+    </div>
+    <div class="toolbar hide" id="tbBaux">
+      <button id="btnNewBail">Nouveau bail</button>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="toolbar hide" id="bulkBar">
+      <span class="grow" style="font-size:11px" id="bulkCount">0 sélectionnée</span>
+      <button id="btnBulk">Rattacher…</button>
+    </div>
+  </aside>
+
+  <div id="map"></div>
+
+  <aside id="right"><div id="fiche"></div></aside>
+</div>
+
+<div id="bot">
+  <div class="stat"><b id="sSurf">—</b><span>surface totale</span></div>
+  <div class="stat"><b id="sNb">—</b><span>parcelles</span></div>
+  <div class="stat"><b id="sProp">—</b><span>en propriété</span></div>
+  <div class="stat"><b id="sEch">—</b><span>échéance &lt; 2 ans</span></div>
+  <div class="stat"><b id="sGeo">—</b><span>sans géométrie</span></div>
+  <span class="grow"></span>
+  <button id="btnGeo">Où suis-je ?</button>
+  <button id="btnFetchGeo">Récupérer les contours</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * Constantes métier
+ * ------------------------------------------------------------------ */
+
+const STATUTS = {
+  propriete:{l:"Propriété",         c:"#2e7d4f"},
+  fermage:  {l:"Fermage écrit",     c:"#2b6ca8"},
+  verbal:   {l:"Bail verbal",       c:"#c98a1e"},
+  metayage: {l:"Métayage",          c:"#b8567f"},
+  cpp:      {l:"Convention pluriannuelle", c:"#8a6d3b"},
+  pret:     {l:"Prêt à usage",      c:"#7a5cb8"},
+  mad:      {l:"Mise à disposition", c:"#4a8a8a"},
+  inconnu:  {l:"À qualifier",       c:"#8b918e"}
+};
+
+/* Groupes de culture du relevé MSA / nature cadastrale */
+const NATURES = {
+  T:"Terre", P:"Pré", PN:"Pré naturel", PP:"Prairie permanente", H:"Herbage",
+  L:"Lande", LB:"Lande boisée", B:"Bois", BT:"Bois taillis", BF:"Bois futaie",
+  BM:"Bois mêlé", BR:"Bois résineux", S:"Sol", J:"Jardin", VE:"Verger",
+  VI:"Vigne", PE:"Peupleraie", CA:"Carrière", E:"Eau", AG:"Terrain d'agrément",
+  CH:"Chemin", AB:"Arbres"
+};
+const NAT_COLORS = ["#4d8b5c","#7a9a3f","#b08a3e","#5f8fa8","#8d6fae","#a86a5c","#6f8f8f","#9a7f4f","#5e7f6f","#8f6f8f"];
+
+const FV_STATUT = { D:"propriete", F:"fermage", M:"metayage" };
+
+const IGN = "https://data.geopf.fr";
+const APICARTO = "https://apicarto.ign.fr/api/cadastre/parcelle";
+const GEOAPI = "https://geo.api.gouv.fr/communes";
+const SCOPE = "https://www.googleapis.com/auth/drive.file";
+
+/* ------------------------------------------------------------------ *
+ * Stockage local (IndexedDB)
+ * ------------------------------------------------------------------ */
+
+function idb(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open("foncier",1);
+    r.onupgradeneeded = ()=> r.result.createObjectStore("kv");
+    r.onsuccess = ()=> res(r.result);
+    r.onerror = ()=> rej(r.error);
+  });
+}
+async function kvGet(k){
+  const d = await idb();
+  return new Promise((res,rej)=>{
+    const t = d.transaction("kv").objectStore("kv").get(k);
+    t.onsuccess = ()=> res(t.result); t.onerror = ()=> rej(t.error);
+  });
+}
+async function kvSet(k,v){
+  const d = await idb();
+  return new Promise((res,rej)=>{
+    const t = d.transaction("kv","readwrite").objectStore("kv").put(v,k);
+    t.onsuccess = ()=> res(); t.onerror = ()=> rej(t.error);
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * État
+ * ------------------------------------------------------------------ */
+
+function emptyDB(){
+  return {
+    version:1, updatedAt:null,
+    exploitation:{nom:""},
+    communes:[], proprietaires:[], baux:[], parcelles:[], ilots:[],
+    settings:{clientId:"", rpgLayer:"LANDUSE.AGRICULTURE2024"}
+  };
+}
+
+let DB = emptyDB();
+let GEO = {};                 // { idParcelle: geometry GeoJSON }
+let sel = null;               // id parcelle sélectionnée
+let tab = "parcelles";
+let colorMode = "statut";
+let bulk = null;              // Set d'ids en sélection multiple, ou null
+let dirty = false;
+
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+/* ------------------------------------------------------------------ *
+ * Utilitaires
+ * ------------------------------------------------------------------ */
+
+const uid = p => p + Math.random().toString(36).slice(2,9);
+const pad = (v,n) => String(v==null?"":v).trim().padStart(n,"0");
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function idParcelle(insee, prefixe, section, numero){
+  return pad(insee,5) + pad(prefixe||"000",3) + pad(section,2).toUpperCase() + pad(numero,4);
+}
+function ha(m2){
+  if(m2==null || isNaN(m2)) return "—";
+  return (m2/10000).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " ha";
+}
+function haca(m2){
+  if(m2==null||isNaN(m2)) return "—";
+  const h = Math.floor(m2/10000), a = Math.floor((m2%10000)/100), c = Math.round(m2%100);
+  return `${h} ha ${pad(a,2)} a ${pad(c,2)} ca`;
+}
+function toast(msg, bad){
+  let t = $("#toast");
+  if(!t){
+    t = document.createElement("div"); t.id="toast";
+    t.style.cssText="position:fixed;bottom:56px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:8px 14px;z-index:3000;box-shadow:0 3px 14px rgba(0,0,0,.2);max-width:90%";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.borderColor = bad ? "var(--danger)" : "var(--rule)";
+  t.style.display = "block";
+  clearTimeout(t._t); t._t = setTimeout(()=>{t.style.display="none";}, bad?6000:3200);
+}
+function communeNom(insee){
+  const c = DB.communes.find(c=>c.insee===insee);
+  return c ? c.nom : insee;
+}
+function proprio(id){ return DB.proprietaires.find(p=>p.id===id) || null; }
+function bail(id){ return DB.baux.find(b=>b.id===id) || null; }
+function parcelle(id){ return DB.parcelles.find(p=>p.id===id) || null; }
+
+function statutDe(p){
+  const b = p.bailId ? bail(p.bailId) : null;
+  return (b && b.statut) || p.statut || "inconnu";
+}
+function bailleurDe(p){
+  const b = p.bailId ? bail(p.bailId) : null;
+  const pr = proprio(b ? b.proprietaireId : p.proprietaireId);
+  return pr ? pr.nom : (statutDe(p)==="propriete" ? "En propriété" : "Non renseigné");
+}
+function echeanceDe(p){
+  const b = p.bailId ? bail(p.bailId) : null;
+  return b && b.echeance ? b.echeance : null;
+}
+function contenance(p){
+  if(p.subdivisions && p.subdivisions.length)
+    return p.subdivisions.reduce((s,d)=> s + (Number(d.surface)||0), 0);
+  return Number(p.contenance)||0;
+}
+function natureDe(p){
+  if(!p.subdivisions || !p.subdivisions.length) return p.nature || "";
+  let best = p.subdivisions[0];
+  for(const d of p.subdivisions) if((Number(d.surface)||0) > (Number(best.surface)||0)) best = d;
+  return best.nature || "";
+}
+function natureLabel(code){ return NATURES[code] || code || "—"; }
+
+/* couleur */
+function hashColor(str, palette){
+  let h = 0;
+  for(let i=0;i<str.length;i++) h = (h*31 + str.charCodeAt(i)) >>> 0;
+  return palette[h % palette.length];
+}
+function couleurDe(p){
+  if(colorMode==="statut") return STATUTS[statutDe(p)] ? STATUTS[statutDe(p)].c : STATUTS.inconnu.c;
+  if(colorMode==="bailleur") return hashColor(bailleurDe(p), NAT_COLORS);
+  if(colorMode==="nature") return natureDe(p) ? hashColor(natureDe(p), NAT_COLORS) : "#8b918e";
+  const e = echeanceDe(p);
+  if(!e) return "#8b918e";
+  const dans = e - new Date().getFullYear();
+  return dans <= 2 ? "#c0392b" : (dans <= 5 ? "#c98a1e" : "#2e7d4f");
+}
+function legendeItems(){
+  if(colorMode==="statut"){
+    const used = new Set(DB.parcelles.map(statutDe));
+    return [...used].map(k=>({c:STATUTS[k]?STATUTS[k].c:"#888", l:STATUTS[k]?STATUTS[k].l:k}));
+  }
+  if(colorMode==="bailleur"){
+    const used = new Set(DB.parcelles.map(bailleurDe));
+    return [...used].map(n=>({c:hashColor(n,NAT_COLORS), l:n}));
+  }
+  if(colorMode==="nature"){
+    const used = new Set(DB.parcelles.map(natureDe).filter(Boolean));
+    return [...used].map(n=>({c:hashColor(n,NAT_COLORS), l:natureLabel(n)}));
+  }
+  return [{c:"#c0392b",l:"moins de 2 ans"},{c:"#c98a1e",l:"2 à 5 ans"},{c:"#2e7d4f",l:"plus de 5 ans"},{c:"#8b918e",l:"sans échéance"}];
+}
+
+/* ------------------------------------------------------------------ *
+ * Carte
+ * ------------------------------------------------------------------ */
+
+let map, coucheParcelles, legende, marqueurPos;
+const couches = {};
+
+function wmts(layer, fmt){
+  return `${IGN}/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&LAYER=${layer}&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=${encodeURIComponent(fmt)}`;
+}
+
+function initMap(){
+  map = L.map("map",{zoomControl:true, minZoom:5, maxZoom:20}).setView([46.6,2.4],6);
+
+  couches.plan  = L.tileLayer(wmts("GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2","image/png"),{maxZoom:19,maxNativeZoom:19,attribution:"IGN-F / Géoplateforme"});
+  couches.ortho = L.tileLayer(wmts("ORTHOIMAGERY.ORTHOPHOTOS","image/jpeg"),{maxZoom:20,maxNativeZoom:19,attribution:"IGN-F / Géoplateforme"});
+  couches.cadastre = L.tileLayer(wmts("CADASTRALPARCELS.PARCELLAIRE_EXPRESS","image/png"),{maxZoom:20,maxNativeZoom:19,opacity:.85});
+  couches.rpg = L.tileLayer.wms(`${IGN}/wms-r/wms`,{layers:DB.settings.rpgLayer,format:"image/png",transparent:true,version:"1.3.0",opacity:.5});
+
+  couches.ortho.addTo(map);
+  couches.cadastre.addTo(map);
+
+  L.control.layers(
+    {"Photo aérienne":couches.ortho, "Plan IGN":couches.plan},
+    {"Plan cadastral":couches.cadastre, "Îlots RPG (anonymisés)":couches.rpg},
+    {position:"topright"}
+  ).addTo(map);
+
+  coucheParcelles = L.layerGroup().addTo(map);
+
+  /* sélecteur de coloration */
+  const ctl = L.control({position:"topleft"});
+  ctl.onAdd = ()=>{
+    const d = L.DomUtil.create("div","legend");
+    d.innerHTML = `<label style="margin:0 0 3px">Colorer par</label>
+      <select id="colorMode" style="padding:2px 4px;font-size:11px">
+        <option value="statut">statut</option>
+        <option value="bailleur">bailleur</option>
+        <option value="nature">nature de culture</option>
+        <option value="echeance">échéance de bail</option>
+      </select>`;
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  };
+  ctl.addTo(map);
+  $("#colorMode").addEventListener("change", e=>{ colorMode = e.target.value; render(); });
+
+  legende = L.control({position:"bottomleft"});
+  legende.onAdd = ()=>{ const d = L.DomUtil.create("div","legend"); d.id="legendBox"; return d; };
+  legende.addTo(map);
+}
+
+function dessineParcelles(){
+  coucheParcelles.clearLayers();
+  const bounds = [];
+  for(const p of visibles()){
+    const g = GEO[p.id];
+    if(!g) continue;
+    const c = couleurDe(p);
+    const on = p.id === sel;
+    const poly = L.geoJSON({type:"Feature",geometry:g,properties:{}},{
+      style:{color: on ? "#111" : c, weight: on ? 3 : 1.4, fillColor:c, fillOpacity:.45, opacity:.95}
+    });
+    poly.on("click", ()=> selectionne(p.id));
+    poly.bindTooltip(`${p.section} ${p.numero}`,{permanent:true,direction:"center",className:"plabel",opacity:1});
+    poly.addTo(coucheParcelles);
+    bounds.push(poly.getBounds());
+  }
+  const box = $("#legendBox");
+  if(box) box.innerHTML = legendeItems().map(x=>`<div><i style="background:${x.c}"></i>${esc(x.l)}</div>`).join("");
+  return bounds;
+}
+
+function cadreTout(){
+  const b = dessineParcelles();
+  if(b.length){
+    let all = b[0];
+    for(const x of b) all = all.extend(x);
+    map.fitBounds(all,{padding:[30,30]});
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Filtres et listes
+ * ------------------------------------------------------------------ */
+
+function visibles(){
+  const q = ($("#q").value||"").trim().toLowerCase();
+  const fc = $("#fCommune").value, fs = $("#fStatut").value;
+  return DB.parcelles.filter(p=>{
+    if(p.actif === false) return false;
+    if(fc && p.insee !== fc) return false;
+    if(fs && statutDe(p) !== fs) return false;
+    if(q){
+      const hay = [p.section+" "+p.numero, p.section+p.numero, p.id, p.lieuDit,
+                   bailleurDe(p), communeNom(p.insee), natureLabel(natureDe(p))]
+                   .join(" ").toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a,b)=> a.id.localeCompare(b.id));
+}
+
+function renderList(){
+  const l = $("#list");
+  if(tab === "baux"){
+    const items = DB.baux.map(b=>{
+      const ps = DB.parcelles.filter(p=>p.bailId===b.id);
+      const s = ps.reduce((t,p)=>t+contenance(p),0);
+      const pr = proprio(b.proprietaireId);
+      return `<div class="item" data-bail="${b.id}">
+        <span class="sw" style="background:${STATUTS[b.statut]?STATUTS[b.statut].c:"#888"}"></span>
+        <span class="grow"><span class="id">${esc(pr?pr.nom:"Bailleur ?")}</span>
+        <div class="sub">${esc(STATUTS[b.statut]?STATUTS[b.statut].l:b.statut)}${b.echeance?" · échéance "+b.echeance:""} · ${ps.length} parc.</div></span>
+        <span class="ar">${ha(s)}</span></div>`;
+    }).join("");
+    l.innerHTML = items || `<div class="note" style="padding:14px">Aucun bail. Un bail regroupe les parcelles d'un même propriétaire, avec sa date d'effet et son échéance.</div>`;
+    l.querySelectorAll("[data-bail]").forEach(n=> n.onclick = ()=> editBail(n.dataset.bail));
+    return;
+  }
+  const vis = visibles();
+  l.innerHTML = vis.map(p=>{
+    const c = couleurDe(p);
+    const cb = bulk ? `<input type="checkbox" data-cb="${p.id}" ${bulk.has(p.id)?"checked":""}>` : "";
+    return `<div class="item ${p.id===sel?"on":""}" data-p="${p.id}">
+      ${cb}<span class="sw" style="background:${c}"></span>
+      <span class="grow"><span class="id">${esc(p.section)} ${esc(p.numero)}</span>
+      <div class="sub">${esc(p.lieuDit||communeNom(p.insee))}${GEO[p.id]?"":" · sans contour"}</div></span>
+      <span class="ar">${ha(contenance(p))}</span></div>`;
+  }).join("");
+  if(!vis.length) l.innerHTML = `<div class="note" style="padding:14px">Aucune parcelle. Commence par « Importer » un relevé parcellaire MSA, ou ajoute une parcelle à la main.</div>`;
+  l.querySelectorAll("[data-p]").forEach(n=>{
+    n.onclick = e=>{ if(e.target.dataset.cb!==undefined) return; selectionne(n.dataset.p); };
+  });
+  l.querySelectorAll("[data-cb]").forEach(n=>{
+    n.onclick = e=>{
+      e.stopPropagation();
+      if(n.checked) bulk.add(n.dataset.cb); else bulk.delete(n.dataset.cb);
+      $("#bulkCount").textContent = bulk.size + " sélectionnée" + (bulk.size>1?"s":"");
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Fiche parcelle
+ * ------------------------------------------------------------------ */
+
+function selectionne(id){
+  sel = id;
+  render();
+  const g = GEO[id];
+  if(g && map){
+    const b = L.geoJSON({type:"Feature",geometry:g}).getBounds();
+    if(map.getZoom() < 14) map.fitBounds(b,{padding:[40,40]});
+  }
+  if(window.innerWidth <= 860){ $("#right").classList.add("open"); $("#left").classList.remove("open"); }
+}
+
+function renderFiche(){
+  const f = $("#fiche");
+  const p = sel ? parcelle(sel) : null;
+  if(!p){
+    f.innerHTML = `<div class="note">Sélectionne une parcelle sur la carte ou dans la liste.
+      <div class="sect"><button id="btnAdd">Ajouter une parcelle</button></div></div>`;
+    const b = $("#btnAdd"); if(b) b.onclick = ajoutManuel;
+    return;
+  }
+  const st = statutDe(p), c = couleurDe(p);
+  const cont = contenance(p);
+  const b = p.bailId ? bail(p.bailId) : null;
+  const subs = (p.subdivisions||[]);
+  const ecart = p.contenanceCalc ? Math.abs(p.contenanceCalc - cont) / (cont||1) : 0;
+
+  f.innerHTML = `
+    <div class="row"><div class="grow">
+      <div style="font-size:15px;font-weight:600">${esc(p.section)} ${esc(p.numero)}</div>
+      <div class="mono" style="font-size:11px;color:var(--muted)">${esc(p.id)}</div>
+    </div><button id="btnDel" title="Supprimer">✕</button></div>
+
+    <div style="margin:8px 0"><span class="pill" style="background:${c}22;color:${c};border:1px solid ${c}66">${esc(STATUTS[st]?STATUTS[st].l:st)}${b&&b.echeance?" · échéance "+b.echeance:""}</span></div>
+
+    <table class="kv">
+      <tr><td>Commune</td><td>${esc(communeNom(p.insee))}</td></tr>
+      <tr><td>Lieu-dit</td><td>${esc(p.lieuDit||"—")}</td></tr>
+      <tr><td>Contenance</td><td>${haca(cont)}</td></tr>
+      <tr><td>Nature</td><td>${esc(natureLabel(natureDe(p)))}</td></tr>
+      <tr><td>Revenu cadastral</td><td>${p.revenuCadastral!=null?p.revenuCadastral.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":"—"}</td></tr>
+      <tr><td>Bailleur</td><td>${esc(bailleurDe(p))}</td></tr>
+      <tr><td>Contour</td><td>${GEO[p.id]?"présent":"<span class='warnflag'>absent</span>"}</td></tr>
+    </table>
+    ${ecart>0.05?`<div class="warnflag" style="margin-top:6px">Écart de ${(ecart*100).toFixed(1)} % entre la contenance et la surface du contour. À vérifier.</div>`:""}
+
+    ${subs.length>1?`<div class="sect"><h3>Subdivisions fiscales</h3>
+      <table class="grid">${subs.map(d=>`<tr><td class="mono">${esc(d.sub||"")}</td><td>${esc(natureLabel(d.nature))}</td><td style="text-align:right">${haca(d.surface)}</td></tr>`).join("")}</table></div>`:""}
+
+    <div class="sect">
+      <label>Statut</label>
+      <select id="eStatut">${Object.entries(STATUTS).map(([k,v])=>`<option value="${k}" ${st===k?"selected":""}>${v.l}</option>`).join("")}</select>
+      <label>Rattacher à un bail</label>
+      <select id="eBail"><option value="">— aucun —</option>${DB.baux.map(x=>{
+        const pr = proprio(x.proprietaireId);
+        return `<option value="${x.id}" ${p.bailId===x.id?"selected":""}>${esc(pr?pr.nom:"?")} — ${esc(STATUTS[x.statut]?STATUTS[x.statut].l:x.statut)}${x.echeance?" ("+x.echeance+")":""}</option>`;
+      }).join("")}</select>
+      <label>Lieu-dit</label><input id="eLieu" value="${esc(p.lieuDit||"")}">
+      <label>Notes</label><textarea id="eNotes" rows="4">${esc(p.notes||"")}</textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="primary grow" id="btnSave">Enregistrer</button>
+        <button id="btnFetch1" title="Récupérer le contour depuis le cadastre">Contour</button>
+      </div>
+    </div>`;
+
+  $("#btnSave").onclick = ()=>{
+    p.statut = $("#eStatut").value;
+    p.bailId = $("#eBail").value || null;
+    p.lieuDit = $("#eLieu").value.trim();
+    p.notes = $("#eNotes").value;
+    touche(); render(); toast("Parcelle enregistrée");
+  };
+  $("#btnFetch1").onclick = ()=> recupereContours([p]);
+  $("#btnDel").onclick = ()=>{
+    if(!confirm(`Supprimer la parcelle ${p.section} ${p.numero} ?`)) return;
+    DB.parcelles = DB.parcelles.filter(x=>x.id!==p.id);
+    delete GEO[p.id]; sel = null; touche(); render();
+  };
+}
+
+function ajoutManuel(){
+  const s = prompt("Section et numéro (ex. A 145) :"); if(!s) return;
+  const m = s.trim().toUpperCase().match(/^([A-Z]{1,2})\s*(\d{1,4})$/);
+  if(!m) return toast("Format attendu : une ou deux lettres, puis le numéro","bad");
+  const insee = $("#fCommune").value || (DB.communes[0] && DB.communes[0].insee);
+  if(!insee) return toast("Ajoute d'abord une commune dans les paramètres","bad");
+  const id = idParcelle(insee,"000",m[1],m[2]);
+  if(parcelle(id)) { selectionne(id); return toast("Cette parcelle existe déjà"); }
+  DB.parcelles.push({id, insee, prefixe:"000", section:pad(m[1],2), numero:pad(m[2],4),
+    lieuDit:"", contenance:0, subdivisions:[], statut:"inconnu", bailId:null,
+    proprietaireId:null, actif:true, notes:"", tags:[]});
+  touche(); selectionne(id); recupereContours([parcelle(id)]);
+}
+
+/* ------------------------------------------------------------------ *
+ * Statistiques
+ * ------------------------------------------------------------------ */
+
+function renderStats(){
+  const vis = visibles();
+  const tot = vis.reduce((s,p)=>s+contenance(p),0);
+  const prop = vis.filter(p=>statutDe(p)==="propriete").reduce((s,p)=>s+contenance(p),0);
+  const an = new Date().getFullYear();
+  const ech = vis.filter(p=>{ const e = echeanceDe(p); return e && e-an <= 2; }).length;
+  const sansGeo = vis.filter(p=>!GEO[p.id]).length;
+  $("#sSurf").textContent = ha(tot);
+  $("#sNb").textContent = vis.length;
+  $("#sProp").textContent = tot ? Math.round(prop/tot*100)+" %" : "—";
+  $("#sEch").textContent = ech;
+  $("#sGeo").textContent = sansGeo;
+}
+
+function render(){
+  renderList(); renderFiche(); renderStats(); dessineParcelles();
+  $("#expName").textContent = DB.exploitation.nom ? "— " + DB.exploitation.nom : "";
+}
+
+function touche(){
+  dirty = true;
+  DB.updatedAt = new Date().toISOString();
+  kvSet("db",DB); kvSet("geo",GEO);
+  planifieSync();
+}
+
+/* ------------------------------------------------------------------ *
+ * API Carto — récupération des contours
+ * ------------------------------------------------------------------ */
+
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+async function apiCarto(insee, section, numero){
+  const essais = [
+    {section:pad(section,2), numero:pad(numero,4)},
+    {section:String(section).replace(/^0+/,""), numero:String(Number(numero))}
+  ];
+  for(const e of essais){
+    const url = `${APICARTO}?code_insee=${encodeURIComponent(insee)}&section=${encodeURIComponent(e.section)}&numero=${encodeURIComponent(e.numero)}&source_ign=PCI`;
+    try{
+      const r = await fetch(url);
+      if(!r.ok) continue;
+      const j = await r.json();
+      if(j && j.features && j.features.length) return j.features[0];
+    }catch(err){ /* réseau : on tente la variante suivante */ }
+    await sleep(120);
+  }
+  return null;
+}
+
+/* Aire géodésique (sphère), en m² — sert au contrôle de cohérence */
+function aireGeo(geom){
+  const R = 6378137, rad = d => d*Math.PI/180;
+  const anneau = co=>{
+    const n = co.length; if(n<3) return 0;
+    let t = 0;
+    for(let i=0;i<n;i++){
+      const a = co[(i-1+n)%n], b = co[i], c = co[(i+1)%n];
+      t += (rad(c[0]) - rad(a[0])) * Math.sin(rad(b[1]));
+    }
+    return Math.abs(t*R*R/2);
+  };
+  const poly = rings => rings.reduce((s,r,i)=> s + (i===0?anneau(r):-anneau(r)), 0);
+  if(geom.type==="Polygon") return poly(geom.coordinates);
+  if(geom.type==="MultiPolygon") return geom.coordinates.reduce((s,p)=>s+poly(p),0);
+  return 0;
+}
+
+async function recupereContours(liste){
+  const cibles = (liste || DB.parcelles.filter(p=>p.actif!==false)).filter(p=>!GEO[p.id] || liste);
+  if(!cibles.length) return toast("Tous les contours sont déjà récupérés");
+  const btn = $("#btnFetchGeo"); const ancien = btn.textContent;
+  let ok = 0, ko = [];
+  for(let i=0;i<cibles.length;i++){
+    const p = cibles[i];
+    btn.textContent = `Contours ${i+1}/${cibles.length}…`;
+    const f = await apiCarto(p.insee, p.section, p.numero);
+    if(f && f.geometry){
+      GEO[p.id] = f.geometry;
+      p.contenanceCalc = Math.round(aireGeo(f.geometry));
+      if(f.properties && f.properties.contenance && !contenance(p)) p.contenance = Number(f.properties.contenance);
+      ok++;
+      if(ok % 5 === 0) dessineParcelles();
+    } else ko.push(p.section+" "+p.numero);
+    await sleep(280);
+  }
+  btn.textContent = ancien;
+  touche(); render();
+  if(!GEO[sel] && ok) cadreTout(); else if(ok) cadreTout();
+  toast(`${ok} contour${ok>1?"s":""} récupéré${ok>1?"s":""}${ko.length?" — introuvables : "+ko.join(", "):""}`, ko.length>0);
+}
+
+/* ------------------------------------------------------------------ *
+ * Import du relevé parcellaire MSA (PDF)
+ * ------------------------------------------------------------------ */
+
+let pdfjsPret = null;
+function chargePdfJs(){
+  if(pdfjsPret) return pdfjsPret;
+  pdfjsPret = new Promise((res,rej)=>{
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = ()=>{
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      res(window.pdfjsLib);
+    };
+    s.onerror = ()=> rej(new Error("PDF.js n'a pas pu être chargé"));
+    document.head.appendChild(s);
+  });
+  return pdfjsPret;
+}
+
+/* Regroupe les fragments de texte en lignes, puis en colonnes par abscisse */
+async function litReleve(file){
+  const pdfjsLib = await chargePdfJs();
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+  const lignes = [];
+  const totaux = [];
+  let communeNomTrouvee = null;
+
+  for(let np=1; np<=pdf.numPages; np++){
+    const page = await pdf.getPage(np);
+    const tc = await page.getTextContent();
+    const items = tc.items
+      .map(it=>({ s:(it.str||"").trim(), x:it.transform[4], y:it.transform[5],
+                  vert: Math.abs(it.transform[1]) > Math.abs(it.transform[0]) }))
+      .filter(it=> it.s.length);
+
+    /* ancres de colonnes : en-têtes horizontaux du tableau */
+    const anc = {};
+    for(const it of items){
+      if(it.vert) continue;
+      if(it.s === "Ha" && anc.ha == null) anc.ha = it.x;
+      else if(it.s === "A" && anc.ha != null && anc.a == null && it.x > anc.ha) anc.a = it.x;
+      else if(it.s === "Ca" && anc.ca == null) anc.ca = it.x;
+      else if(/^Euros/.test(it.s) && anc.eu == null) anc.eu = it.x;
+      else if(it.s === "PLAN" && anc.plan == null) anc.plan = it.x;
+      else if(/^LIEU-DIT/.test(it.s) && anc.lieu == null) anc.lieu = it.x;
+    }
+
+    /* groupement par ordonnée */
+    const parY = new Map();
+    for(const it of items){
+      const k = Math.round(it.y/2)*2;
+      if(!parY.has(k)) parY.set(k,[]);
+      parY.get(k).push(it);
+    }
+    const ys = [...parY.keys()].sort((a,b)=>b-a);
+    for(const y of ys){
+      const row = parY.get(y).sort((a,b)=>a.x-b.x);
+      const txt = row.map(r=>r.s).join(" ");
+      if(/TOTAL COMMUNE DE\s+(.+)/i.test(txt)) communeNomTrouvee = txt.match(/TOTAL COMMUNE DE\s+([A-ZÀ-Ü' -]+)/i)[1].trim();
+      if(/TOTAL/i.test(txt)){
+        const nums = row.filter(r=> anc.ha!=null && r.x >= anc.ha-6 && r.x <= (anc.ca!=null?anc.ca+22:anc.ha+80) && /^\d{1,3}$/.test(r.s));
+        if(nums.length>=3) totaux.push({txt, h:+nums[0].s, a:+nums[1].s, c:+nums[2].s});
+        continue;
+      }
+      lignes.push({y, row, anc, txt});
+    }
+  }
+  return {lignes, totaux, communeNomTrouvee};
+}
+
+function analyseLignes(res){
+  const out = [];
+  let dept = "", com = "", compte = "", nomProprio = "";
+
+  for(const L of res.lignes){
+    const {row, anc} = L;
+    const toks = row.map(r=>r.s);
+
+    /* en-tête de bloc : 31 440 D 00023 O  → département, commune, compte */
+    const mBloc = L.txt.match(/^\s*(\d{2,3})\s+(\d{3})\s+([A-Z])?\s*(\d{5})/);
+    if(mBloc){ dept = mBloc[1]; com = mBloc[2]; compte = mBloc[4]; }
+
+    /* section : lettre isolée à gauche du numéro de plan */
+    let iSec = -1;
+    for(let i=0;i<row.length;i++){
+      if(anc.plan!=null && row[i].x > anc.plan-4) break;
+      if(/^[A-Z]{1,2}$/.test(row[i].s) && !/^[DFM]$/.test(row[i].s)) iSec = i;
+    }
+    if(iSec < 0) continue;
+    const iNum = row.findIndex((r,i)=> i>iSec && /^\d{3,4}$/.test(r.s) && (anc.plan==null || Math.abs(r.x-anc.plan) < 40));
+    if(iNum < 0) continue;
+
+    const section = row[iSec].s, numero = pad(row[iNum].s,4);
+
+    /* sub.fisc + groupe de culture : "01BT", "02 L" */
+    let sub = "", nature = "";
+    for(let i=iNum+1;i<row.length;i++){
+      if(anc.ha!=null && row[i].x >= anc.ha-8) break;
+      const m = row[i].s.match(/^(\d{2})\s*([A-Z]{1,2})?$/);
+      if(m){ sub = m[1]; if(m[2]) nature = m[2]; continue; }
+      if(/^[A-Z]{1,2}$/.test(row[i].s)) nature = row[i].s;
+    }
+
+    /* superficie : trois nombres dans les colonnes Ha / A / Ca */
+    const colVal = (x0,x1)=>{
+      if(x0==null) return null;
+      const t = row.find(r=> r.x >= x0-9 && r.x <= (x1!=null?x1-4:x0+26) && /^\d{1,4}$/.test(r.s));
+      return t ? +t.s : null;
+    };
+    const H = colVal(anc.ha, anc.a), A = colVal(anc.a, anc.ca), C = colVal(anc.ca, anc.eu);
+    if(H==null && A==null && C==null) continue;
+    const surface = (H||0)*10000 + (A||0)*100 + (C||0);
+    if(!surface) continue;
+
+    /* revenu cadastral et faire-valoir */
+    let rc = null, fv = "";
+    for(const r of row){
+      if(anc.eu!=null && r.x >= anc.eu-10 && /^\d{1,6}$/.test(r.s) && rc==null) rc = +r.s;
+      if(/^[DFM]$/.test(r.s) && anc.eu!=null && r.x > anc.eu) fv = r.s;
+    }
+
+    /* lieu-dit / nom du propriétaire : dernière colonne */
+    let lieu = "";
+    if(anc.lieu != null){
+      lieu = row.filter(r=> r.x >= anc.lieu-30).map(r=>r.s).join(" ").trim();
+      if(/^\d+$/.test(lieu)) lieu = "";
+    }
+    if(/[A-Z]{4,}/.test(lieu) && /\b(SCI|MME|MR|M\.|JONKVROUW|VAN|DE|DEL)\b/i.test(lieu)) nomProprio = lieu;
+
+    out.push({
+      garder:true, dept, com, compte, section, numero, sub,
+      nature, surface, rc: rc!=null ? rc/100 : null, fv, lieu,
+      insee: dept && com ? pad(dept,2)+pad(com,3) : ""
+    });
+  }
+  return out;
+}
+
+async function ouvreImport(){
+  const html = `
+    <div class="mask" id="mask"><div class="modal"><header><h2>Importer un relevé parcellaire MSA</h2><button id="mClose">✕</button></header>
+    <div class="body" id="mBody">
+      <p class="note">Sélectionne le PDF de ton relevé d'exploitation. Il est lu directement dans ton navigateur, aucun envoi n'est effectué. Les lignes détectées s'affichent ensuite pour relecture avant validation.</p>
+      <input type="file" accept="application/pdf" id="fPdf">
+      <div id="apercu" style="margin-top:12px"></div>
+    </div>
+    <footer><span id="mInfo" class="note grow"></span><button id="mCancel">Annuler</button><button class="primary hide" id="mOk">Importer</button></footer>
+    </div></div>`;
+  document.body.insertAdjacentHTML("beforeend", html);
+  const close = ()=> $("#mask").remove();
+  $("#mClose").onclick = close; $("#mCancel").onclick = close;
+
+  $("#fPdf").onchange = async e=>{
+    const file = e.target.files[0]; if(!file) return;
+    $("#mInfo").textContent = "Lecture du PDF…";
+    let res, rows;
+    try{
+      res = await litReleve(file);
+      rows = analyseLignes(res);
+    }catch(err){
+      $("#mInfo").innerHTML = `<span class="bad">Lecture impossible : ${esc(err.message)}</span>`;
+      return;
+    }
+    if(!rows.length){
+      $("#mInfo").innerHTML = `<span class="bad">Aucune ligne reconnue. Ce relevé a peut-être une mise en page différente — envoie-le moi pour que j'ajuste le parseur.</span>`;
+      return;
+    }
+
+    /* contrôle de somme contre la ligne de total du relevé */
+    const somme = rows.reduce((s,r)=>s+r.surface,0);
+    const tot = res.totaux.length ? res.totaux[res.totaux.length-1] : null;
+    const attendu = tot ? tot.h*10000 + tot.a*100 + tot.c : null;
+    const ecart = attendu ? somme - attendu : 0;
+
+    $("#mInfo").innerHTML = attendu
+      ? (Math.abs(ecart) < 100
+          ? `<span class="ok">${rows.length} lignes — total ${haca(somme)}, conforme au relevé.</span>`
+          : `<span class="bad">${rows.length} lignes — total ${haca(somme)} contre ${haca(attendu)} au relevé, écart de ${haca(Math.abs(ecart))}. Vérifie le tableau.</span>`)
+      : `${rows.length} lignes détectées. Aucune ligne de total trouvée pour recouper.`;
+
+    const opts = Object.entries(NATURES).map(([k,v])=>`<option value="${k}">${k} — ${v}</option>`).join("");
+    $("#apercu").innerHTML = `<table class="grid"><thead><tr>
+      <th></th><th>INSEE</th><th>Sect.</th><th>N°</th><th>Sub</th><th>Nature</th><th>Surface</th><th>R.C.</th><th>F.V.</th><th>Lieu-dit</th></tr></thead>
+      <tbody>${rows.map((r,i)=>`<tr>
+        <td><input type="checkbox" data-k="garder" data-i="${i}" checked style="width:auto"></td>
+        <td><input class="mono" data-k="insee" data-i="${i}" value="${esc(r.insee)}" style="width:52px"></td>
+        <td><input class="mono" data-k="section" data-i="${i}" value="${esc(r.section)}" style="width:34px"></td>
+        <td><input class="mono" data-k="numero" data-i="${i}" value="${esc(r.numero)}" style="width:48px"></td>
+        <td><input class="mono" data-k="sub" data-i="${i}" value="${esc(r.sub)}" style="width:30px"></td>
+        <td><select data-k="nature" data-i="${i}"><option value=""></option>${opts}</select></td>
+        <td><input data-k="surface" data-i="${i}" value="${r.surface}" style="width:66px"></td>
+        <td><input data-k="rc" data-i="${i}" value="${r.rc!=null?r.rc:""}" style="width:52px"></td>
+        <td><input class="mono" data-k="fv" data-i="${i}" value="${esc(r.fv)}" style="width:26px"></td>
+        <td><input data-k="lieu" data-i="${i}" value="${esc(r.lieu)}"></td></tr>`).join("")}
+      </tbody></table>`;
+    $$("#apercu select[data-k=nature]").forEach(s=>{ s.value = rows[+s.dataset.i].nature || ""; });
+    $("#apercu").oninput = ev=>{
+      const t = ev.target, i = +t.dataset.i, k = t.dataset.k;
+      rows[i][k] = t.type==="checkbox" ? t.checked : (k==="surface"||k==="rc" ? (t.value===""?null:Number(t.value)) : t.value);
+    };
+    $("#mOk").classList.remove("hide");
+    $("#mOk").onclick = ()=>{ appliqueImport(rows.filter(r=>r.garder), res.communeNomTrouvee); close(); };
+  };
+}
+
+function appliqueImport(rows, communeTrouvee){
+  let nP = 0, nS = 0, nB = 0;
+  const comptes = new Map();
+
+  for(const r of rows){
+    if(!r.insee || !r.section || !r.numero) continue;
+    if(!DB.communes.find(c=>c.insee===r.insee))
+      DB.communes.push({insee:r.insee, nom: communeTrouvee || r.insee});
+
+    const id = idParcelle(r.insee,"000",r.section,r.numero);
+    let p = parcelle(id);
+    if(!p){
+      p = {id, insee:r.insee, prefixe:"000", section:pad(r.section,2), numero:pad(r.numero,4),
+           lieuDit:"", contenance:0, subdivisions:[], statut:"inconnu",
+           bailId:null, proprietaireId:null, actif:true, notes:"", tags:[]};
+      DB.parcelles.push(p); nP++;
+    }
+    const sub = r.sub || "01";
+    const ex = (p.subdivisions||[]).find(d=>d.sub===sub);
+    if(ex){ ex.nature = r.nature; ex.surface = r.surface; ex.rc = r.rc; }
+    else { (p.subdivisions = p.subdivisions||[]).push({sub, nature:r.nature, surface:r.surface, rc:r.rc}); nS++; }
+
+    p.contenance = contenance(p);
+    p.revenuCadastral = (p.subdivisions||[]).reduce((s,d)=> s + (Number(d.rc)||0), 0) || null;
+    if(r.lieu && !/[A-Z]{4,}\s+[A-Z]{4,}/.test(r.lieu) && !p.lieuDit) p.lieuDit = r.lieu;
+
+    /* faire-valoir : proposition de statut, jamais imposée si déjà qualifiée */
+    if(r.fv && p.statut === "inconnu") p.statut = FV_STATUT[r.fv] || "inconnu";
+
+    /* un compte propriétaire par bailleur */
+    if(r.compte && r.fv && r.fv !== "D"){
+      if(!comptes.has(r.compte)){
+        let pr = DB.proprietaires.find(x=>x.compte===r.compte);
+        if(!pr){
+          pr = {id:uid("pr_"), compte:r.compte, nom:"Compte "+r.compte, adresse:"", tel:"", notes:""};
+          DB.proprietaires.push(pr);
+        }
+        let b = DB.baux.find(x=>x.proprietaireId===pr.id);
+        if(!b){
+          b = {id:uid("b_"), proprietaireId:pr.id, statut:FV_STATUT[r.fv]||"fermage",
+               dateEffet:"", dureeAns:9, echeance:null, fermageAnnuel:null, notes:""};
+          DB.baux.push(b); nB++;
+        }
+        comptes.set(r.compte, b.id);
+      }
+      if(!p.bailId) p.bailId = comptes.get(r.compte);
+    }
+  }
+  touche(); render(); rafraichitFiltres();
+  toast(`${nP} parcelles, ${nS} subdivisions, ${nB} bail/baux créés. Récupère maintenant les contours.`);
+}
+
+/* ------------------------------------------------------------------ *
+ * Baux
+ * ------------------------------------------------------------------ */
+
+function editBail(id){
+  const b = id ? bail(id) : {id:uid("b_"), proprietaireId:null, statut:"fermage",
+    dateEffet:"", dureeAns:9, echeance:null, fermageAnnuel:null, notes:""};
+  const neuf = !id;
+  const pr = proprio(b.proprietaireId);
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="mask" id="mask"><div class="modal" style="max-width:460px">
+    <header><h2>${neuf?"Nouveau bail":"Bail"}</h2><button id="mClose">✕</button></header>
+    <div class="body">
+      <label>Propriétaire</label><input id="bNom" value="${esc(pr?pr.nom:"")}" placeholder="Nom du bailleur">
+      <label>Adresse</label><input id="bAdr" value="${esc(pr?pr.adresse:"")}">
+      <label>Téléphone</label><input id="bTel" value="${esc(pr?pr.tel:"")}">
+      <label>Statut</label><select id="bStatut">${Object.entries(STATUTS).map(([k,v])=>`<option value="${k}" ${b.statut===k?"selected":""}>${v.l}</option>`).join("")}</select>
+      <div class="row"><div class="grow"><label>Date d'effet</label><input type="date" id="bDate" value="${esc(b.dateEffet||"")}"></div>
+      <div style="width:90px"><label>Durée (ans)</label><input type="number" id="bDuree" value="${b.dureeAns||9}"></div></div>
+      <label>Année d'échéance</label><input type="number" id="bEch" value="${b.echeance||""}" placeholder="calculée si vide">
+      <label>Fermage annuel (€)</label><input type="number" step="0.01" id="bFerm" value="${b.fermageAnnuel!=null?b.fermageAnnuel:""}">
+      <label>Notes</label><textarea id="bNotes" rows="3">${esc(b.notes||"")}</textarea>
+    </div>
+    <footer>${neuf?"":'<button id="bDel" class="grow" style="text-align:left;border:0">Supprimer</button>'}
+      <button id="mCancel">Annuler</button><button class="primary" id="bOk">Enregistrer</button></footer>
+    </div></div>`);
+  const close = ()=> $("#mask").remove();
+  $("#mClose").onclick = close; $("#mCancel").onclick = close;
+  const del = $("#bDel");
+  if(del) del.onclick = ()=>{
+    if(!confirm("Supprimer ce bail ? Les parcelles rattachées seront détachées.")) return;
+    DB.parcelles.forEach(p=>{ if(p.bailId===b.id) p.bailId = null; });
+    DB.baux = DB.baux.filter(x=>x.id!==b.id);
+    touche(); render(); close();
+  };
+  $("#bOk").onclick = ()=>{
+    const nom = $("#bNom").value.trim() || "Bailleur";
+    let p = proprio(b.proprietaireId) || DB.proprietaires.find(x=>x.nom===nom);
+    if(!p){ p = {id:uid("pr_"), compte:"", nom, adresse:"", tel:"", notes:""}; DB.proprietaires.push(p); }
+    p.nom = nom; p.adresse = $("#bAdr").value.trim(); p.tel = $("#bTel").value.trim();
+    b.proprietaireId = p.id;
+    b.statut = $("#bStatut").value;
+    b.dateEffet = $("#bDate").value;
+    b.dureeAns = Number($("#bDuree").value) || 9;
+    const saisie = Number($("#bEch").value);
+    b.echeance = saisie || (b.dateEffet ? new Date(b.dateEffet).getFullYear() + b.dureeAns : null);
+    b.fermageAnnuel = $("#bFerm").value === "" ? null : Number($("#bFerm").value);
+    b.notes = $("#bNotes").value;
+    if(neuf) DB.baux.push(b);
+    touche(); render(); close();
+  };
+}
+
+function rattacheGroupe(){
+  if(!bulk || !bulk.size) return toast("Coche d'abord des parcelles","bad");
+  if(!DB.baux.length) return toast("Crée d'abord un bail dans l'onglet Baux","bad");
+  const opts = DB.baux.map(b=>{
+    const pr = proprio(b.proprietaireId);
+    return `<option value="${b.id}">${esc(pr?pr.nom:"?")} — ${esc(STATUTS[b.statut]?STATUTS[b.statut].l:b.statut)}</option>`;
+  }).join("");
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="mask" id="mask"><div class="modal" style="max-width:400px">
+    <header><h2>Rattacher ${bulk.size} parcelle${bulk.size>1?"s":""}</h2><button id="mClose">✕</button></header>
+    <div class="body"><label>Bail</label><select id="rBail"><option value="">— détacher —</option>${opts}</select></div>
+    <footer><button id="mCancel">Annuler</button><button class="primary" id="rOk">Rattacher</button></footer>
+    </div></div>`);
+  const close = ()=> $("#mask").remove();
+  $("#mClose").onclick = close; $("#mCancel").onclick = close;
+  $("#rOk").onclick = ()=>{
+    const v = $("#rBail").value || null;
+    bulk.forEach(id=>{ const p = parcelle(id); if(p) p.bailId = v; });
+    bulk.clear(); $("#bulkCount").textContent = "0 sélectionnée";
+    touche(); render(); close();
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Exports
+ * ------------------------------------------------------------------ */
+
+function telecharge(nom, blob){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = nom;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+
+function lignesExport(){
+  return DB.parcelles.filter(p=>p.actif!==false).sort((a,b)=>a.id.localeCompare(b.id)).map(p=>{
+    const b = p.bailId ? bail(p.bailId) : null;
+    return {
+      "Identifiant": p.id,
+      "Commune": communeNom(p.insee),
+      "Section": p.section,
+      "Numéro": p.numero,
+      "Lieu-dit": p.lieuDit||"",
+      "Surface (m²)": contenance(p),
+      "Surface (ha)": +(contenance(p)/10000).toFixed(4),
+      "Nature": natureLabel(natureDe(p)),
+      "Revenu cadastral (€)": p.revenuCadastral!=null ? p.revenuCadastral : "",
+      "Statut": STATUTS[statutDe(p)] ? STATUTS[statutDe(p)].l : statutDe(p),
+      "Bailleur": bailleurDe(p),
+      "Date d'effet": b && b.dateEffet ? b.dateEffet : "",
+      "Échéance": b && b.echeance ? b.echeance : "",
+      "Fermage annuel (€)": b && b.fermageAnnuel!=null ? b.fermageAnnuel : "",
+      "Contour": GEO[p.id] ? "oui" : "non",
+      "Notes": (p.notes||"").replace(/\r?\n/g," ")
+    };
+  });
+}
+
+function exportCSV(){
+  const rows = lignesExport();
+  if(!rows.length) return toast("Rien à exporter","bad");
+  const cols = Object.keys(rows[0]);
+  const cell = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
+  const csv = [cols.join(";")].concat(rows.map(r=>cols.map(c=>cell(r[c])).join(";"))).join("\r\n");
+  telecharge(`foncier-${new Date().toISOString().slice(0,10)}.csv`,
+    new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}));
+}
+
+function chargeSheetJS(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise((res,rej)=>{
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = ()=> res(window.XLSX);
+    s.onerror = ()=> rej(new Error("SheetJS n'a pas pu être chargé"));
+    document.head.appendChild(s);
+  });
+}
+
+async function exportXLSX(){
+  const rows = lignesExport();
+  if(!rows.length) return toast("Rien à exporter","bad");
+  let XLSX;
+  try{ XLSX = await chargeSheetJS(); }
+  catch(e){ return toast("Export tableur indisponible hors ligne — utilise le CSV","bad"); }
+
+  const wb = XLSX.utils.book_new();
+
+  /* feuille parcelles, identifiants forcés en texte */
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const ref = XLSX.utils.decode_range(ws["!ref"]);
+  const texte = ["Identifiant","Section","Numéro"];
+  const entetes = Object.keys(rows[0]);
+  for(let c=ref.s.c;c<=ref.e.c;c++){
+    if(!texte.includes(entetes[c])) continue;
+    for(let r=ref.s.r+1;r<=ref.e.r;r++){
+      const a = XLSX.utils.encode_cell({r,c});
+      if(ws[a]){ ws[a].t = "s"; ws[a].v = String(ws[a].v); ws[a].z = "@"; }
+    }
+  }
+  ws["!cols"] = entetes.map(h=>({wch: Math.max(10, Math.min(28, h.length+4))}));
+  XLSX.utils.book_append_sheet(wb, ws, "Parcelles");
+
+  /* feuille baux */
+  const bx = DB.baux.map(b=>{
+    const pr = proprio(b.proprietaireId);
+    const ps = DB.parcelles.filter(p=>p.bailId===b.id);
+    return {
+      "Bailleur": pr?pr.nom:"", "Adresse": pr?pr.adresse:"", "Téléphone": pr?pr.tel:"",
+      "Statut": STATUTS[b.statut]?STATUTS[b.statut].l:b.statut,
+      "Date d'effet": b.dateEffet||"", "Durée (ans)": b.dureeAns||"",
+      "Échéance": b.echeance||"", "Fermage annuel (€)": b.fermageAnnuel!=null?b.fermageAnnuel:"",
+      "Parcelles": ps.length, "Surface (ha)": +(ps.reduce((s,p)=>s+contenance(p),0)/10000).toFixed(4),
+      "Notes": b.notes||""
+    };
+  });
+  if(bx.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bx), "Baux");
+
+  /* synthèse */
+  const agr = (fn)=>{
+    const m = new Map();
+    for(const p of DB.parcelles.filter(p=>p.actif!==false)){
+      const k = fn(p); m.set(k, (m.get(k)||0) + contenance(p));
+    }
+    return [...m.entries()].sort((a,b)=>b[1]-a[1]);
+  };
+  const synth = [];
+  synth.push({Regroupement:"Par statut", Clé:"", "Surface (ha)":""});
+  agr(p=>STATUTS[statutDe(p)]?STATUTS[statutDe(p)].l:statutDe(p)).forEach(([k,v])=> synth.push({Regroupement:"", Clé:k, "Surface (ha)":+(v/10000).toFixed(4)}));
+  synth.push({Regroupement:"", Clé:"", "Surface (ha)":""});
+  synth.push({Regroupement:"Par bailleur", Clé:"", "Surface (ha)":""});
+  agr(bailleurDe).forEach(([k,v])=> synth.push({Regroupement:"", Clé:k, "Surface (ha)":+(v/10000).toFixed(4)}));
+  synth.push({Regroupement:"", Clé:"", "Surface (ha)":""});
+  synth.push({Regroupement:"Par nature", Clé:"", "Surface (ha)":""});
+  agr(p=>natureLabel(natureDe(p))).forEach(([k,v])=> synth.push({Regroupement:"", Clé:k, "Surface (ha)":+(v/10000).toFixed(4)}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(synth), "Synthèse");
+
+  XLSX.writeFile(wb, `foncier-${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function exportGeoJSON(){
+  const feats = DB.parcelles.filter(p=>GEO[p.id]).map(p=>({
+    type:"Feature", geometry:GEO[p.id],
+    properties:{
+      id:p.id, commune:communeNom(p.insee), section:p.section, numero:p.numero,
+      lieu_dit:p.lieuDit||"", surface_m2:contenance(p),
+      nature:natureLabel(natureDe(p)), statut:STATUTS[statutDe(p)]?STATUTS[statutDe(p)].l:statutDe(p),
+      bailleur:bailleurDe(p), echeance:echeanceDe(p)||"", notes:p.notes||""
+    }
+  }));
+  if(!feats.length) return toast("Aucun contour à exporter","bad");
+  telecharge(`foncier-${new Date().toISOString().slice(0,10)}.geojson`,
+    new Blob([JSON.stringify({type:"FeatureCollection",features:feats})],{type:"application/geo+json"}));
+}
+
+function exportJSON(){
+  telecharge(`foncier-sauvegarde-${new Date().toISOString().slice(0,10)}.json`,
+    new Blob([JSON.stringify({db:DB, geo:GEO},null,1)],{type:"application/json"}));
+}
+
+function ouvreExport(){
+  document.body.insertAdjacentHTML("beforeend",`
+    <div class="mask" id="mask"><div class="modal" style="max-width:430px">
+    <header><h2>Exporter</h2><button id="mClose">✕</button></header>
+    <div class="body">
+      <div class="row" style="flex-wrap:wrap;gap:8px">
+        <button id="xX">Tableur (.xlsx)</button>
+        <button id="xC">CSV</button>
+        <button id="xG">GeoJSON (QGIS)</button>
+        <button id="xJ">Sauvegarde complète (.json)</button>
+        <button id="xI">Restaurer une sauvegarde</button>
+      </div>
+      <p class="note" style="margin-top:12px">Le tableur contient trois feuilles : parcelles, baux et synthèse par statut, bailleur et nature. En CSV, Excel peut tronquer les zéros des numéros de parcelle — le tableur ne le fait pas.</p>
+      <input type="file" accept=".json" id="fJson" class="hide">
+    </div><footer><button id="mCancel">Fermer</button></footer></div></div>`);
+  const close = ()=> $("#mask").remove();
+  $("#mClose").onclick = close; $("#mCancel").onclick = close;
+  $("#xX").onclick = exportXLSX; $("#xC").onclick = exportCSV;
+  $("#xG").onclick = exportGeoJSON; $("#xJ").onclick = exportJSON;
+  $("#xI").onclick = ()=> $("#fJson").click();
+  $("#fJson").onchange = async e=>{
+    const f = e.target.files[0]; if(!f) return;
+    if(!confirm("Remplacer les données actuelles par cette sauvegarde ?")) return;
+    try{
+      const j = JSON.parse(await f.text());
+      DB = Object.assign(emptyDB(), j.db || j);
+      GEO = j.geo || {};
+      touche(); rafraichitFiltres(); render(); cadreTout(); close();
+      toast("Sauvegarde restaurée");
+    }catch(err){ toast("Fichier illisible","bad"); }
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Google Drive
+ * ------------------------------------------------------------------ */
+
+let token = null, tokenClient = null, dossierId = null, syncTimer = null;
+
+function chargeGis(){
+  if(window.google && google.accounts) return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.onload = res; s.onerror = ()=> rej(new Error("Google Identity indisponible"));
+    document.head.appendChild(s);
+  });
+}
+
+async function connecteDrive(interactif){
+  const cid = DB.settings.clientId;
+  if(!cid){ toast("Renseigne un identifiant client Google dans les paramètres","bad"); return false; }
+  await chargeGis();
+  return new Promise(res=>{
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: cid, scope: SCOPE,
+      callback: t=>{
+        if(t && t.access_token){
+          token = t.access_token;
+          setTimeout(()=>{ token = null; majSync(); }, (t.expires_in||3600)*1000 - 60000);
+          majSync(); res(true);
+        } else res(false);
+      },
+      error_callback: ()=> res(false)
+    });
+    tokenClient.requestAccessToken({prompt: interactif ? "" : "none"});
+  });
+}
+
+async function drive(path, opts){
+  const r = await fetch("https://www.googleapis.com/drive/v3/"+path,
+    Object.assign({}, opts, {headers: Object.assign({Authorization:"Bearer "+token}, (opts&&opts.headers)||{})}));
+  if(r.status === 401){ token = null; majSync(); throw new Error("Session Google expirée"); }
+  if(!r.ok) throw new Error("Drive : " + r.status);
+  return r.json();
+}
+
+async function dossier(nom, parent){
+  const q = encodeURIComponent(`name='${nom}' and mimeType='application/vnd.google-apps.folder' and trashed=false` + (parent?` and '${parent}' in parents`:""));
+  const l = await drive(`files?q=${q}&fields=files(id)`);
+  if(l.files.length) return l.files[0].id;
+  const meta = {name:nom, mimeType:"application/vnd.google-apps.folder"};
+  if(parent) meta.parents = [parent];
+  const c = await drive("files?fields=id",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(meta)});
+  return c.id;
+}
+
+async function fichier(nom, parent){
+  const q = encodeURIComponent(`name='${nom}' and '${parent}' in parents and trashed=false`);
+  const l = await drive(`files?q=${q}&fields=files(id,modifiedTime)`);
+  return l.files[0] || null;
+}
+
+async function ecrit(nom, parent, contenu, id){
+  const meta = id ? {} : {name:nom, parents:[parent]};
+  const bord = "----f" + Date.now();
+  const corps =
+    `--${bord}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
+    `--${bord}\r\nContent-Type: application/json\r\n\r\n${contenu}\r\n--${bord}--`;
+  const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files${id?"/"+id:""}?uploadType=multipart&fields=id`,{
+    method: id ? "PATCH" : "POST",
+    headers:{Authorization:"Bearer "+token, "Content-Type":`multipart/related; boundary=${bord}`},
+    body: corps
+  });
+  if(!r.ok) throw new Error("Écriture Drive : " + r.status);
+  return (await r.json()).id;
+}
+
+async function litFichier(id){
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{headers:{Authorization:"Bearer "+token}});
+  if(!r.ok) throw new Error("Lecture Drive : " + r.status);
+  return r.json();
+}
+
+async function syncDrive(silencieux){
+  if(!token){ if(!await connecteDrive(!silencieux)) return; }
+  try{
+    majSync("synchronisation…");
+    dossierId = dossierId || await dossier("Foncier");
+    const sauv = await dossier("sauvegardes", dossierId);
+
+    const fD = await fichier("foncier.json", dossierId);
+    const fG = await fichier("geo-parcelles.json", dossierId);
+
+    /* première connexion sur un appareil vierge : on récupère ce qui est en ligne */
+    if(fD && !DB.parcelles.length){
+      const dist = await litFichier(fD.id);
+      DB = Object.assign(emptyDB(), dist);
+      if(fG) GEO = await litFichier(fG.id);
+      await kvSet("db",DB); await kvSet("geo",GEO);
+      rafraichitFiltres(); render(); cadreTout();
+      majSync(); toast("Données récupérées depuis Drive");
+      return;
+    }
+
+    DB.updatedAt = new Date().toISOString();
+    await ecrit("foncier.json", dossierId, JSON.stringify(DB), fD ? fD.id : null);
+    await ecrit("geo-parcelles.json", dossierId, JSON.stringify(GEO), fG ? fG.id : null);
+
+    const stamp = new Date().toISOString().replace(/[:.]/g,"-").slice(0,19);
+    await ecrit(`foncier-${stamp}.json`, sauv, JSON.stringify(DB), null);
+
+    /* rotation : on ne garde que les 20 dernières */
+    const anciennes = await drive(`files?q=${encodeURIComponent(`'${sauv}' in parents and trashed=false`)}&fields=files(id,name)&orderBy=name desc`);
+    for(const f of anciennes.files.slice(20))
+      await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`,{method:"DELETE",headers:{Authorization:"Bearer "+token}});
+
+    dirty = false; majSync();
+    if(!silencieux) toast("Enregistré sur Drive");
+  }catch(e){
+    majSync("erreur");
+    toast(e.message, true);
+  }
+}
+
+function planifieSync(){
+  if(!DB.settings.clientId || !token) { majSync(); return; }
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(()=> syncDrive(true), 4000);
+  majSync();
+}
+
+function majSync(txt){
+  const s = $("#syncState");
+  if(txt) { s.textContent = txt; return; }
+  if(!DB.settings.clientId) s.textContent = "local";
+  else if(!token) s.textContent = "Drive : déconnecté";
+  else s.textContent = dirty ? "Drive : à enregistrer" : "Drive : à jour";
+}
+
+/* ------------------------------------------------------------------ *
+ * Paramètres
+ * ------------------------------------------------------------------ */
+
+function ouvreParams(){
+  document.body.insertAdjacentHTML("beforeend",`
+    <div class="mask" id="mask"><div class="modal" style="max-width:520px">
+    <header><h2>Paramètres</h2><button id="mClose">✕</button></header>
+    <div class="body">
+      <label>Nom de l'exploitation</label><input id="pNom" value="${esc(DB.exploitation.nom||"")}">
+
+      <div class="sect"><h3>Communes</h3>
+        <div id="pCom"></div>
+        <div class="row" style="margin-top:6px">
+          <input id="pAddCom" class="grow" placeholder="Nom de commune, puis Entrée">
+        </div>
+        <p class="note">La recherche interroge l'annuaire officiel des communes pour récupérer le code INSEE.</p>
+      </div>
+
+      <div class="sect"><h3>Sauvegarde Google Drive</h3>
+        <label>Identifiant client OAuth</label>
+        <input id="pCid" class="mono" value="${esc(DB.settings.clientId||"")}" placeholder="xxxx.apps.googleusercontent.com">
+        <p class="note">À créer dans la console Google Cloud, type « application Web », avec l'adresse de ce site déclarée en origine JavaScript autorisée. Portée demandée : accès aux seuls fichiers créés par cette application. Laisse vide pour travailler en local, avec les exports manuels comme sauvegarde.</p>
+        <div class="row"><button id="pConn">Connecter</button><button id="pSync">Enregistrer maintenant</button></div>
+      </div>
+
+      <div class="sect"><h3>Couche RPG</h3>
+        <input id="pRpg" class="mono" value="${esc(DB.settings.rpgLayer||"")}">
+        <p class="note">Nom de la couche WMS du registre parcellaire graphique. Le millésime change chaque année ; la liste à jour est publiée par l'IGN sur data.geopf.fr, rubrique agriculture.</p>
+      </div>
+    </div>
+    <footer><button id="mCancel">Fermer</button><button class="primary" id="pOk">Enregistrer</button></footer>
+    </div></div>`);
+  const close = ()=> $("#mask").remove();
+  $("#mClose").onclick = close; $("#mCancel").onclick = close;
+
+  const listeCom = ()=>{
+    $("#pCom").innerHTML = DB.communes.length
+      ? DB.communes.map(c=>`<div class="row" style="padding:3px 0"><span class="mono" style="width:58px">${c.insee}</span><span class="grow">${esc(c.nom)}</span><button data-rm="${c.insee}" style="padding:2px 7px">✕</button></div>`).join("")
+      : `<div class="note">Aucune commune. Ajoute-les ici, ou laisse l'import du relevé MSA les créer.</div>`;
+    $$("#pCom [data-rm]").forEach(b=> b.onclick = ()=>{
+      DB.communes = DB.communes.filter(c=>c.insee!==b.dataset.rm); listeCom();
+    });
+  };
+  listeCom();
+
+  $("#pAddCom").onkeydown = async e=>{
+    if(e.key !== "Enter") return;
+    const nom = e.target.value.trim(); if(!nom) return;
+    e.target.disabled = true;
+    try{
+      const r = await fetch(`${GEOAPI}?nom=${encodeURIComponent(nom)}&fields=code,nom,codesPostaux&limit=8`);
+      const j = await r.json();
+      if(!j.length){ toast("Commune introuvable","bad"); }
+      else if(j.length === 1 || j[0].nom.toLowerCase() === nom.toLowerCase()){
+        if(!DB.communes.find(c=>c.insee===j[0].code)) DB.communes.push({insee:j[0].code, nom:j[0].nom});
+        e.target.value = ""; listeCom();
+      } else {
+        const choix = prompt("Plusieurs communes correspondent :\n" +
+          j.map((c,i)=>`${i+1}. ${c.nom} (${c.code})`).join("\n") + "\n\nNuméro :");
+        const k = Number(choix)-1;
+        if(j[k] && !DB.communes.find(c=>c.insee===j[k].code)){
+          DB.communes.push({insee:j[k].code, nom:j[k].nom}); e.target.value = ""; listeCom();
+        }
+      }
+    }catch(err){ toast("Recherche indisponible hors ligne","bad"); }
+    e.target.disabled = false; e.target.focus();
+  };
+
+  $("#pConn").onclick = async ()=>{
+    DB.settings.clientId = $("#pCid").value.trim();
+    await kvSet("db",DB);
+    if(await connecteDrive(true)) toast("Compte Google connecté");
+    else toast("Connexion refusée ou annulée","bad");
+  };
+  $("#pSync").onclick = ()=> syncDrive(false);
+
+  $("#pOk").onclick = ()=>{
+    DB.exploitation.nom = $("#pNom").value.trim();
+    DB.settings.clientId = $("#pCid").value.trim();
+    const rpg = $("#pRpg").value.trim();
+    if(rpg !== DB.settings.rpgLayer){
+      DB.settings.rpgLayer = rpg;
+      const visible = map.hasLayer(couches.rpg);
+      map.removeLayer(couches.rpg);
+      couches.rpg = L.tileLayer.wms(`${IGN}/wms-r/wms`,{layers:rpg,format:"image/png",transparent:true,version:"1.3.0",opacity:.5});
+      if(visible) couches.rpg.addTo(map);
+    }
+    touche(); render(); majSync(); close();
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Géolocalisation : dans quelle parcelle suis-je ?
+ * ------------------------------------------------------------------ */
+
+function dansPolygone(pt, geom){
+  const test = ring=>{
+    let dedans = false;
+    for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if(((yi>pt[1]) !== (yj>pt[1])) && (pt[0] < (xj-xi)*(pt[1]-yi)/(yj-yi)+xi)) dedans = !dedans;
+    }
+    return dedans;
+  };
+  const poly = rings=>{
+    if(!test(rings[0])) return false;
+    for(let i=1;i<rings.length;i++) if(test(rings[i])) return false;
+    return true;
+  };
+  if(geom.type === "Polygon") return poly(geom.coordinates);
+  if(geom.type === "MultiPolygon") return geom.coordinates.some(poly);
+  return false;
+}
+
+function ouSuisJe(){
+  if(!navigator.geolocation) return toast("Géolocalisation indisponible","bad");
+  toast("Localisation en cours…");
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const pt = [pos.coords.longitude, pos.coords.latitude];
+    if(marqueurPos) map.removeLayer(marqueurPos);
+    marqueurPos = L.circleMarker([pt[1],pt[0]],{radius:7,color:"#111",weight:2,fillColor:"#fff",fillOpacity:1}).addTo(map);
+    map.setView([pt[1],pt[0]], Math.max(map.getZoom(),17));
+    const trouvee = DB.parcelles.find(p=> GEO[p.id] && dansPolygone(pt, GEO[p.id]));
+    if(trouvee){ selectionne(trouvee.id); toast(`Tu es sur ${trouvee.section} ${trouvee.numero}${trouvee.lieuDit?" — "+trouvee.lieuDit:""}`); }
+    else toast("Aucune de tes parcelles à cet endroit");
+  }, err=> toast("Position indisponible : "+err.message, true), {enableHighAccuracy:true, timeout:12000});
+}
+
+/* ------------------------------------------------------------------ *
+ * Amorçage
+ * ------------------------------------------------------------------ */
+
+function rafraichitFiltres(){
+  const fc = $("#fCommune"), v = fc.value;
+  fc.innerHTML = `<option value="">Toutes communes</option>` +
+    DB.communes.map(c=>`<option value="${c.insee}">${esc(c.nom)}</option>`).join("");
+  fc.value = v;
+  const fs = $("#fStatut"), v2 = fs.value;
+  fs.innerHTML = `<option value="">Tout statut</option>` +
+    Object.entries(STATUTS).map(([k,x])=>`<option value="${k}">${x.l}</option>`).join("");
+  fs.value = v2;
+}
+
+async function demarre(){
+  const d = await kvGet("db"); if(d) DB = Object.assign(emptyDB(), d);
+  const g = await kvGet("geo"); if(g) GEO = g;
+
+  initMap();
+  rafraichitFiltres();
+  render();
+  cadreTout();
+  majSync();
+
+  if(DB.settings.clientId) connecteDrive(false);
+
+  $("#q").addEventListener("input", ()=>{ renderList(); renderStats(); dessineParcelles(); });
+  $("#fCommune").addEventListener("change", ()=>{ render(); cadreTout(); });
+  $("#fStatut").addEventListener("change", render);
+  $("#btnImport").onclick = ouvreImport;
+  $("#btnExport").onclick = ouvreExport;
+  $("#btnParams").onclick = ouvreParams;
+  $("#btnNewBail").onclick = ()=> editBail(null);
+  $("#btnFetchGeo").onclick = ()=> recupereContours(null);
+  $("#btnGeo").onclick = ouSuisJe;
+  $("#btnBulk").onclick = rattacheGroupe;
+  $("#btnSel").onclick = ()=>{
+    bulk = bulk ? null : new Set();
+    $("#bulkBar").classList.toggle("hide", !bulk);
+    $("#btnSel").style.background = bulk ? "var(--accent-soft)" : "";
+    renderList();
+  };
+  $$(".tabs button").forEach(b=> b.onclick = ()=>{
+    tab = b.dataset.tab;
+    $$(".tabs button").forEach(x=>x.classList.toggle("on", x===b));
+    $("#tbParcelles").classList.toggle("hide", tab!=="parcelles");
+    $("#tbBaux").classList.toggle("hide", tab!=="baux");
+    renderList();
+  });
+  $("#drawer").onclick = ()=> $("#left").classList.toggle("open");
+  $("#map").addEventListener("click", ()=>{
+    $("#left").classList.remove("open"); $("#right").classList.remove("open");
+  });
+
+  window.addEventListener("beforeunload", e=>{
+    if(dirty && DB.settings.clientId && token){ e.preventDefault(); e.returnValue = ""; }
+  });
+}
+
+demarre();
+</script>
+</body>
+</html>
